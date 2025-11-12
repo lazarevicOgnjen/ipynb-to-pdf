@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-import os, re, requests, json
+import os, re, sys, json, requests, subprocess
+from pathlib import Path
 
-EVENT_PATH = os.environ["GITHUB_EVENT_PATH"]
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+EVENT_PATH   = os.environ["GITHUB_EVENT_PATH"]
+UPLOAD_DIR   = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
 
 def main():
     with open(EVENT_PATH, "r", encoding="utf-8") as f:
@@ -11,34 +12,36 @@ def main():
 
     body = event["issue"]["body"] or ""
 
-    # 1. Markdown linkovi  [ime](url)
+    # 1. markdown  [text](url)
     md_links = re.findall(r'\[([^\]]+)\]\((https://github\.com/[^\s)]+\.ipynb[^)\s]*)\)', body, flags=re.I)
     urls = [url for _, url in md_links]
 
-    # 2. Raw githubusercontent
-    raw_links = re.findall(r'(https://raw\.githubusercontent\.com/[^\s)]+\.ipynb[^)\s]*)', body, flags=re.I)
-    urls += raw_links
+    # 2. raw githubusercontent
+    urls += re.findall(r'(https://raw\.githubusercontent\.com/[^\s)]+\.ipynb[^)\s]*)', body, flags=re.I)
 
-    # 3. Direktni github attachment (bez markdowna)
-    bare = re.findall(r'(https://github\.com/[^/\s]+/[^/\s]+/files/\d+/[^\s)]+\.ipynb[^)\s]*)', body, flags=re.I)
-    urls += bare
+    # 3. direktni github attachment
+    urls += re.findall(r'(https://github\.com/[^/\s]+/[^/\s]+/files/\d+/[^\s)]+\.ipynb[^)\s]*)', body, flags=re.I)
 
     if not urls:
         print("❌  No .ipynb file found in issue body.")
-        exit(1)
+        sys.exit(1)
 
     for url in urls:
         url = url.split("?")[0]
-        name = os.path.basename(url)
-        nb_path = os.path.join(UPLOAD_DIR, name)
+        name = Path(url).name
+        nb_path = UPLOAD_DIR / name
         print(f"⬇️  Downloading {url}")
         r = requests.get(url, timeout=60)
         r.raise_for_status()
-        with open(nb_path, "wb") as f:
-            f.write(r.content)
+        nb_path.write_bytes(r.content)
 
-        print(f"🔄  Converting  ->  {name[:-6]}.pdf")
-        os.system(f'jupyter nbconvert "{nb_path}" --to pdf --output-dir="{UPLOAD_DIR}"')
+        pdf_name = nb_path.with_suffix(".pdf").name
+        print(f"🔄  Converting  ->  {pdf_name}")
+        cmd = f'jupyter nbconvert "{nb_path}" --to pdf --output-dir="{UPLOAD_DIR}"'
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        if result.returncode != 0:
+            print("nbconvert ERROR:", result.stderr)
+            sys.exit(1)
 
 if __name__ == "__main__":
     main()
