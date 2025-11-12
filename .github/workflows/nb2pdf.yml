@@ -21,19 +21,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install deps
+      - name: Install system & Python deps
         run: |
-          pip install -U nbconvert
           sudo apt-get update
           sudo apt-get install -y texlive-xetex texlive-fonts-recommended
-
-      - name: Allowed user check
-        run: |
-          ALLOWED="lazarevicOgnjen"
-          if ! echo "$ALLOWED" | grep -q "${{ github.event.issue.user.login }}"; then
-            echo "Unauthorized user: ${{ github.event.issue.user.login }}"
-            exit 1
-          fi
+          pip install -U nbconvert requests
 
       - name: Download & convert
         run: python .github/scripts/download_and_convert.py
@@ -55,7 +47,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `✅ PDF je spreman: [${files[0]}](${link})`
+              body: `✅ PDF ready: [${files[0]}](${link})`
             });
             github.rest.issues.update({
               issue_number: context.issue.number,
