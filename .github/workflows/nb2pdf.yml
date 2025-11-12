@@ -1,4 +1,4 @@
-name: Issue notebook → PDF → commit
+name: Issue notebook → PDF → artifact
 
 on:
   issues:
@@ -9,7 +9,7 @@ jobs:
     if: github.event.label.name == 'convert'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       issues: write
 
     steps:
@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install system & Python deps
+      - name: Install deps
         run: |
           sudo apt-get update
           sudo apt-get install -y texlive-xetex texlive-fonts-recommended
@@ -30,28 +30,29 @@ jobs:
       - name: Download & convert
         run: python .github/scripts/download_and_convert.py
 
-      - name: Commit PDF
-        uses: lazarevicOgnjen/git-auto-commit-action@v6
+      - name: Upload PDF artifact
+        uses: actions/upload-artifact@v4
         with:
-          commit_message: 'Add PDF from issue #${{ github.event.issue.number }}'
-          file_pattern: 'uploads/*.pdf'
+          name: pdf-issue-${{ github.event.issue.number }}
+          path: uploads/*.pdf
+          retention-days: 30        # čuva 30 dana, menjaš po želji
 
-      - name: Comment and close
+      - name: Comment link
         uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
-            const files = fs.readdirSync('uploads').filter(f => f.endsWith('.pdf'));
-            const link = `https://github.com/${{ github.repository }}/blob/main/uploads/${files[0]}`;
+            const run = context.runId;
+            const repo = context.repo;
+            const link = `https://github.com/${repo.owner}/${repo.repo}/actions/runs/${run}`;
             github.rest.issues.createComment({
               issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `✅ PDF ready: [${files[0]}](${link})`
+              owner: repo.owner,
+              repo: repo.repo,
+              body: `✅ PDF ready! Download it from the Actions run: [Artifacts](${link})`
             });
             github.rest.issues.update({
               issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
+              owner: repo.owner,
+              repo: repo.repo,
               state: 'closed'
             });
