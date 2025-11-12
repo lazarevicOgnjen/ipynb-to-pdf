@@ -1,0 +1,65 @@
+name: Issue notebook → PDF → commit
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  build:
+    if: github.event.label.name == 'convert'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: |
+          pip install -U nbconvert
+          sudo apt-get update
+          sudo apt-get install -y texlive-xetex texlive-fonts-recommended
+
+      - name: Allowed user check
+        run: |
+          ALLOWED="your-username,trusted-user1,trusted-user2"
+          if ! echo "$ALLOWED" | grep -q "${{ github.event.issue.user.login }}"; then
+            echo "Unauthorized user: ${{ github.event.issue.user.login }}"
+            exit 1
+          fi
+
+      - name: Download & convert
+        run: python .github/scripts/download_and_convert.py
+
+      - name: Commit PDF
+        uses: lazarevicOgnjen/git-auto-commit-action@v6
+        with:
+          commit_message: 'Add PDF from issue #${{ github.event.issue.number }}'
+          file_pattern: 'uploads/*.pdf'
+
+      - name: Comment and close
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const files = fs.readdirSync('uploads').filter(f => f.endsWith('.pdf'));
+            const link = `https://github.com/${{ github.repository }}/blob/main/uploads/${files[0]}`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `✅ PDF je spreman: [${files[0]}](${link})`
+            });
+            github.rest.issues.update({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'closed'
+            });
