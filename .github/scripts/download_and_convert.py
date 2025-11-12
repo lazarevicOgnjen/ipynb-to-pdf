@@ -1,30 +1,63 @@
+#!/usr/bin/env python3
+"""
+Download every .ipynb attached / linked in the issue body
+and convert it to PDF inside uploads/
+"""
+
 import os
 import re
-import requests
+import sys
 import json
+import requests
 
-event_path = os.environ["GITHUB_EVENT_PATH"]
-with open(event_path) as f:
-    event = json.load(f)
+EVENT_PATH = os.environ["GITHUB_EVENT_PATH"]
+UPLOAD_DIR = "uploads"
 
-body = event["issue"]["body"]
-os.makedirs("uploads", exist_ok=True)
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# pronađi markdown linkove ili raw github linkove
-urls = re.findall(r'(https://github\.com[^\s\)]+\.ipynb[^>\s]*)', body)
+def main():
+    with open(EVENT_PATH, "r", encoding="utf-8") as f:
+        event = json.load(f)
 
-if not urls:
-    print("Nema .ipynb fajla u issue-u.")
-    exit(1)
+    body = event["issue"]["body"] or ""
 
-for url in urls:
-    # pretvori u raw url ako nije
-    raw = url.replace("github.com", "raw.githubusercontent.com").replace("/blob", "")
-    name = os.path.basename(raw).split("?")[0]
-    r = requests.get(raw)
-    r.raise_for_status()
-    nb_path = f"uploads/{name}"
-    with open(nb_path, "wb") as f:
-        f.write(r.content)
-    # konvertuj
-    os.system(f"jupyter nbconvert '{nb_path}' --to pdf --output-dir uploads")
+    # 1. GitHub-issue attachment URLs  (user uploaded file)
+    att_urls = re.findall(
+        r"https://github\.com/[^/\s]+/[^/\s]+/files/\d+/[^\s)]+\.ipynb[^)\s]*",
+        body,
+        flags=re.IGNORECASE,
+    )
+
+    # 2. Fallback: raw GitHub URLs
+    if not att_urls:
+        att_urls = re.findall(
+            r"https://raw\.githubusercontent\.com/[^\s)]+\.ipynb[^)\s]*",
+            body,
+            flags=re.IGNORECASE,
+        )
+
+    if not att_urls:
+        print("❌  No .ipynb file found in issue body.")
+        sys.exit(1)
+
+    for url in att_urls:
+        url = url.split("?")[0]  # remove query string
+        name = os.path.basename(url)
+        if not name.lower().endswith(".ipynb"):
+            continue
+        nb_path = os.path.join(UPLOAD_DIR, name)
+        print(f"⬇️  Downloading {url}")
+        r = requests.get(url, timeout=60)
+        r.raise_for_status()
+        with open(nb_path, "wb") as f:
+            f.write(r.content)
+
+        pdf_name = name[:-6] + ".pdf"
+        print(f"🔄  Converting  ->  {pdf_name}")
+        os.system(
+            f'jupyter nbconvert "{nb_path}" --to pdf --output-dir="{UPLOAD_DIR}"'
+        )
+
+
+if __name__ == "__main__":
+    main()
