@@ -32,29 +32,29 @@ jobs:
           # 1. run every cell and save the executed notebook
           jupyter nbconvert \
             --to notebook --execute \
-            --output notebooks/analysis_EXECUTED.ipynb \
-            notebooks/*.ipynb
+            --output notebooks/1_EXECUTED.ipynb \
+            notebooks/1.ipynb
 
           # 2. turn the executed notebook into PDF
           jupyter nbconvert \
             --to webpdf \
             --no-input \
             --output-dir notebooks \
-            notebooks/analysis_EXECUTED.ipynb
+            notebooks/1_EXECUTED.ipynb
 
           # rename to something nicer
-          mv notebooks/analysis_EXECUTED.pdf notebooks/analysis.pdf
+          mv notebooks/1_EXECUTED.pdf notebooks/1.pdf
 
       - name: Upload PDF artefact (so you can download it from the UI)
         uses: actions/upload-artifact@v4
         with:
           name: notebook-pdf
-          path: notebooks/analysis.pdf
+          path: notebooks/1.pdf
 
       # Optional: commit the PDF back into the repo
       - name: Commit PDF back to repo
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add notebooks/analysis.pdf
+          git add notebooks/1.pdf
           git diff --quiet --cached || (git commit -m "auto-generated PDF from notebook" && git push)
