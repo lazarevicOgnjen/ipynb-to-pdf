@@ -1,4 +1,0 @@
-# ne želiš lokalne env & cache
-__pycache__/
-*.pyc
-.env
