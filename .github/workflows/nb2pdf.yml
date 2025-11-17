@@ -1,65 +1,60 @@
-name: Issue notebook → PDF → artifact
+name: ipynb → pdf (run-all-cells)
 
 on:
-  issues:
-    types: [labeled]
+  push:
+    paths: [ "notebooks/*.ipynb" ]   # only run when a notebook changes
+  workflow_dispatch:                 # or manually from the Actions tab
 
 jobs:
-  build:
-    if: github.event.label.name == 'convert'
+  build-pdf:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      issues: write
-
     steps:
-      - name: Checkout
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
-      - name: Install deps
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Chromium (needed by nbconvert --webpdf)
         run: |
           sudo apt-get update
-          sudo apt-get install -y texlive-xetex texlive-fonts-recommended
-          pip install -U nbconvert requests
+          sudo apt-get install -y chromium-browser
 
-      - name: Download & convert
-        run: python .github/scripts/download_and_convert.py
-
-      - name: Debug – check files
+      - name: Execute notebook & convert to PDF
         run: |
-          echo "=== uploads/ ==="
-          ls -la uploads/ || echo "uploads/ missing"
-          echo "=== root ==="
-          ls -la *.pdf 2>/dev/null || echo "no PDF in root"
+          # 1. run every cell and save the executed notebook
+          jupyter nbconvert \
+            --to notebook --execute \
+            --output notebooks/analysis_EXECUTED.ipynb \
+            notebooks/analysis.ipynb
 
-      - name: Upload PDF artifact (if exists)
+          # 2. turn the executed notebook into PDF
+          jupyter nbconvert \
+            --to webpdf \
+            --no-input \
+            --output-dir notebooks \
+            notebooks/analysis_EXECUTED.ipynb
+
+          # rename to something nicer
+          mv notebooks/analysis_EXECUTED.pdf notebooks/analysis.pdf
+
+      - name: Upload PDF artefact (so you can download it from the UI)
         uses: actions/upload-artifact@v4
         with:
-          name: pdf-issue-${{ github.event.issue.number }}
-          path: uploads/*.pdf
-          retention-days: 30
+          name: notebook-pdf
+          path: notebooks/analysis.pdf
 
-      - name: Comment link
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const run = context.runId;
-            const repo = context.repo;
-            const link = `https://github.com/${repo.owner}/${repo.repo}/actions/runs/${run}`;
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: repo.owner,
-              repo: repo.repo,
-              body: `✅ PDF ready! Download it from the Actions run: [Artifacts](${link})`
-            });
-            github.rest.issues.update({
-              issue_number: context.issue.number,
-              owner: repo.owner,
-              repo: repo.repo,
-              state: 'closed'
-            })
+      # Optional: commit the PDF back into the repo
+      - name: Commit PDF back to repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add notebooks/analysis.pdf
+          git diff --quiet --cached || (git commit -m "auto-generated PDF from notebook" && git push)
