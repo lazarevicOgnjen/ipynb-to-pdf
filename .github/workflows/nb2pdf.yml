@@ -33,7 +33,7 @@ jobs:
           jupyter nbconvert \
             --to notebook --execute \
             --output notebooks/analysis_EXECUTED.ipynb \
-            notebooks/analysis.ipynb
+            notebooks/*.ipynb
 
           # 2. turn the executed notebook into PDF
           jupyter nbconvert \
